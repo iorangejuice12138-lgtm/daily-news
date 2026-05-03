@@ -17,15 +17,43 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _normalize_url(url: str) -> str:
+    """Normalize URL for dedup by stripping query params and fragments."""
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    return f"{parsed.scheme}://{parsed.netloc}{parsed.path}".rstrip("/")
+
+
+def _normalize_title(title: str) -> str:
+    """Normalize title for fuzzy dedup."""
+    import re
+    t = title.strip().lower()
+    # Strip common prefixes like [视频], 完整版, etc.
+    t = re.sub(r"^\[.*?\]\s*", "", t)
+    t = re.sub(r"^完整版\s*", "", t)
+    # Strip trailing whitespace and special chars
+    t = re.sub(r"\s+", " ", t).strip()
+    return t
+
+
 def deduplicate(news_list: list[dict]) -> list[dict]:
-    """Remove duplicate news by title similarity."""
-    seen_titles = set()
+    """Remove duplicate news by URL and title similarity."""
+    seen_urls: set[str] = set()
+    seen_titles: set[str] = set()
     unique = []
     for item in news_list:
-        key = item["title"].strip().lower()
-        if key not in seen_titles:
-            seen_titles.add(key)
-            unique.append(item)
+        url_key = _normalize_url(item.get("url", ""))
+        title_key = _normalize_title(item["title"])
+
+        if url_key and url_key in seen_urls:
+            continue
+        if title_key in seen_titles:
+            continue
+
+        if url_key:
+            seen_urls.add(url_key)
+        seen_titles.add(title_key)
+        unique.append(item)
     return unique
 
 
