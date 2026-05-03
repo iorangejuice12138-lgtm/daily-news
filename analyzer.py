@@ -1,10 +1,10 @@
-"""Daily News Aggregator - AI Analysis Module (Anthropic Claude)"""
+"""Daily News Aggregator - AI Analysis Module (DeepSeek)"""
 
 import json
 import logging
 import time
 
-import anthropic
+from openai import OpenAI
 
 import config
 
@@ -33,18 +33,21 @@ def _build_prompt(batch: list[dict]) -> str:
 {items_text}"""
 
 
-def _call_claude(prompt: str) -> str:
-    """Call the Anthropic API with retries."""
-    client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+def _call_deepseek(prompt: str) -> str:
+    """Call the DeepSeek API with retries."""
+    client = OpenAI(
+        api_key=config.DEEPSEEK_API_KEY,
+        base_url=config.DEEPSEEK_BASE_URL,
+    )
 
     for attempt in range(config.MAX_RETRIES):
         try:
-            message = client.messages.create(
-                model=config.CLAUDE_MODEL,
+            response = client.chat.completions.create(
+                model=config.DEEPSEEK_MODEL,
                 max_tokens=2048,
                 messages=[{"role": "user", "content": prompt}],
             )
-            return message.content[0].text
+            return response.choices[0].message.content
         except Exception as e:
             logger.warning(f"API call attempt {attempt + 1} failed: {e}")
             if attempt < config.MAX_RETRIES - 1:
@@ -54,10 +57,15 @@ def _call_claude(prompt: str) -> str:
 
 
 def _parse_response(response_text: str, batch_size: int) -> list[dict]:
-    """Parse the JSON response from Claude."""
-    # Extract JSON array from response (handle markdown code blocks)
+    """Parse the JSON response from DeepSeek."""
     text = response_text.strip()
+    # Extract JSON array from response (handle markdown code blocks)
     if "```" in text:
+        start = text.find("[")
+        end = text.rfind("]") + 1
+        if start != -1 and end > start:
+            text = text[start:end]
+    else:
         start = text.find("[")
         end = text.rfind("]") + 1
         if start != -1 and end > start:
@@ -69,7 +77,6 @@ def _parse_response(response_text: str, batch_size: int) -> list[dict]:
         logger.error(f"Failed to parse API response as JSON: {response_text[:200]}")
         return [{"summary": "", "tags": []} for _ in range(batch_size)]
 
-    # Build a lookup by index
     parsed = {}
     for item in results:
         idx = item.get("index", -1)
@@ -78,17 +85,15 @@ def _parse_response(response_text: str, batch_size: int) -> list[dict]:
             "tags": item.get("tags", []),
         }
 
-    # Return in order, filling gaps
     return [parsed.get(i, {"summary": "", "tags": []}) for i in range(batch_size)]
 
 
 def analyze_batch(batch: list[dict]) -> list[dict]:
-    """Analyze a batch of news items with Claude."""
+    """Analyze a batch of news items with DeepSeek."""
     prompt = _build_prompt(batch)
-    response_text = _call_claude(prompt)
+    response_text = _call_deepseek(prompt)
     analyses = _parse_response(response_text, len(batch))
 
-    # Merge analysis results back into news items
     enriched = []
     for item, analysis in zip(batch, analyses):
         enriched.append({
@@ -104,9 +109,8 @@ def analyze_all(news_list: list[dict]) -> list[dict]:
     if not news_list:
         return []
 
-    if not config.ANTHROPIC_API_KEY:
-        logger.error("ANTHROPIC_API_KEY not set, skipping AI analysis")
-        # Return items with fallback summary
+    if not config.DEEPSEEK_API_KEY:
+        logger.error("DEEPSEEK_API_KEY not set, skipping AI analysis")
         return [
             {**item, "summary": item["title"][:50], "tags": ["未分类"]}
             for item in news_list

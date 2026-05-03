@@ -2,9 +2,10 @@
 
 import os
 
-# --- Anthropic API ---
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-CLAUDE_MODEL = "claude-sonnet-4-20250514"
+# --- DeepSeek API ---
+DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
+DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+DEEPSEEK_MODEL = "deepseek-chat"
 
 # --- CCTV News (新闻联播) ---
 CCTV_NEWS_LIST_URL = "https://tv.cctv.com/lm/xwlb/"
