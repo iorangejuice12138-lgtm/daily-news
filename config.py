@@ -13,13 +13,13 @@ CCTV_BASE_URL = "https://tv.cctv.com"
 # --- RSS Sources ---
 RSS_FEEDS = [
     {
-        "name": "BBC News",
+        "name": "BBC World",
         "url": "https://feeds.bbci.co.uk/news/world/rss.xml",
         "lang": "en",
     },
     {
-        "name": "Reuters Top News",
-        "url": "https://feeds.reuters.com/reuters/topNews",
+        "name": "BBC Top",
+        "url": "https://feeds.bbci.co.uk/news/rss.xml",
         "lang": "en",
     },
     {

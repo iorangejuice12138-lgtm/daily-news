@@ -28,6 +28,7 @@ def _fetch(url: str) -> str:
     ) as client:
         resp = client.get(url)
         resp.raise_for_status()
+        resp.encoding = "utf-8"
         return resp.text
 
 
@@ -45,14 +46,18 @@ def scrape_cctv_news() -> list[dict]:
         soup = BeautifulSoup(html, "lxml")
 
         # Find links to individual news segments for today
-        today_str = today.strftime("%Y%m%d")
+        today_path = today.strftime("/%Y/%m/%d/")
         links = []
 
         for a_tag in soup.select("a[href]"):
             href = a_tag.get("href", "")
-            if today_str in href and href.endswith(".shtml"):
+            if today_path in href and href.endswith(".shtml"):
                 full_url = href if href.startswith("http") else config.CCTV_BASE_URL + href
-                links.append((full_url, a_tag.get_text(strip=True)))
+                title = a_tag.get_text(strip=True)
+                # Clean up title prefix
+                title = re.sub(r"^完整版\s*", "", title)
+                if title:
+                    links.append((full_url, title))
 
         if not links:
             # Fallback: try to find the latest day's content
@@ -60,11 +65,13 @@ def scrape_cctv_news() -> list[dict]:
             for a_tag in soup.select("a[href]"):
                 href = a_tag.get("href", "")
                 text = a_tag.get_text(strip=True)
-                if re.search(r"/\d{8}/", href) and href.endswith(".shtml") and text:
-                    full_url = href if href.startswith("http") else config.CCTV_BASE_URL + href
-                    links.append((full_url, text))
-                    if len(links) >= 20:
-                        break
+                if re.search(r"/\d{4}/\d{2}/\d{2}/", href) and href.endswith(".shtml") and text:
+                    text = re.sub(r"^完整版\s*", "", text)
+                    if text:
+                        full_url = href if href.startswith("http") else config.CCTV_BASE_URL + href
+                        links.append((full_url, text))
+                        if len(links) >= 20:
+                            break
 
         # De-duplicate by URL
         seen = set()
@@ -129,27 +136,28 @@ def scrape_rss_news() -> list[dict]:
             feed = feedparser.parse(feed_cfg["url"])
             count = 0
             for entry in feed.entries:
-                # Try to filter by today's date
+                title = entry.get("title", "").strip()
+                summary = entry.get("summary", entry.get("description", "")).strip()
+                summary = BeautifulSoup(summary, "lxml").get_text(strip=True)
+                link = entry.get("link", "")
+
+                if not title or not summary:
+                    continue
+
+                # Try date filtering: prefer today's items, but allow recent ones
                 published = entry.get("published_parsed") or entry.get("updated_parsed")
                 if published:
                     pub_date = datetime(*published[:6]).date()
                     if pub_date != today_date:
                         continue
 
-                title = entry.get("title", "").strip()
-                summary = entry.get("summary", entry.get("description", "")).strip()
-                # Strip HTML tags from summary
-                summary = BeautifulSoup(summary, "lxml").get_text(strip=True)
-                link = entry.get("link", "")
-
-                if title and summary:
-                    news_items.append({
-                        "title": title,
-                        "content": summary,
-                        "source": feed_cfg["name"],
-                        "url": link,
-                    })
-                    count += 1
+                news_items.append({
+                    "title": title,
+                    "content": summary,
+                    "source": feed_cfg["name"],
+                    "url": link,
+                })
+                count += 1
 
                 if count >= 10:
                     break
@@ -159,7 +167,7 @@ def scrape_rss_news() -> list[dict]:
         except Exception as e:
             logger.warning(f"Failed to fetch RSS feed {feed_cfg['name']}: {e}")
 
-    # If date filtering yielded nothing, grab the latest entries as fallback
+    # If date filtering yielded nothing, grab the latest entries without date filter
     if not news_items:
         logger.info("No RSS items for today, falling back to latest entries")
         for feed_cfg in config.RSS_FEEDS:

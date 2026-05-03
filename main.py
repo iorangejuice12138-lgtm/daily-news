@@ -1,9 +1,6 @@
 """Daily News Aggregator - Main Entry Point"""
 
 import logging
-import os
-import subprocess
-import sys
 from datetime import datetime, timezone, timedelta
 
 from scraper import scrape_all
@@ -25,37 +22,11 @@ def deduplicate(news_list: list[dict]) -> list[dict]:
     seen_titles = set()
     unique = []
     for item in news_list:
-        # Normalize title for dedup
         key = item["title"].strip().lower()
         if key not in seen_titles:
             seen_titles.add(key)
             unique.append(item)
     return unique
-
-
-def git_commit_and_push(date_str: str):
-    """Commit and push the updated data files to the repository."""
-    repo_dir = os.path.dirname(os.path.abspath(__file__))
-    os.chdir(repo_dir)
-
-    try:
-        subprocess.run(["git", "add", "data/"], check=True)
-        result = subprocess.run(
-            ["git", "diff", "--cached", "--quiet"],
-            capture_output=True,
-        )
-        if result.returncode == 0:
-            logger.info("No changes to commit")
-            return
-
-        subprocess.run(
-            ["git", "commit", "-m", f"📰 Daily news update: {date_str}"],
-            check=True,
-        )
-        subprocess.run(["git", "push"], check=True)
-        logger.info(f"Git: committed and pushed news for {date_str}")
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Git operation failed: {e}")
 
 
 def main():
@@ -84,13 +55,6 @@ def main():
     # Step 4: Export
     logger.info("Step 4/4: Exporting to CSV/Excel...")
     export(analyzed_news, date_str)
-
-    # Step 5: Git commit (only in CI)
-    if os.environ.get("CI"):
-        logger.info("CI environment detected, committing results...")
-        git_commit_and_push(date_str)
-    else:
-        logger.info("Local run — skipping git commit")
 
     logger.info("=== Done! ===")
 
